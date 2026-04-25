@@ -1,0 +1,80 @@
+import asyncio
+import sys
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.prebuilt import create_react_agent
+
+SYSTEM_PROMPT = """You are Kortex, a personal research assistant with access to two tools:
+
+- search_notes: searches a local SQLite database of research entries
+- read_file: reads a .txt file from the local vault folder
+
+When answering questions, ALWAYS try search_notes first. Only use read_file if:
+  - search_notes returns no results, OR
+  - the user explicitly asks to read a specific file
+
+Be concise. Cite the note ID or filename when referencing retrieved content."""
+
+
+async def run_agent():
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        temperature=0,
+    )
+
+    client = MultiServerMCPClient(
+        {
+            "kortex": {
+                "command": "uv",
+                "args": ["run", "python", "server.py"],
+                "transport": "stdio",
+            }
+        }
+    )
+    tools = await client.get_tools()
+    agent = create_react_agent(llm, tools, prompt=SYSTEM_PROMPT)
+
+    print("Kortex agent ready. Type 'quit' or 'exit' to stop.\n")
+
+    conversation_history = []
+
+    while True:
+        try:
+            user_input = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye.")
+            break
+
+        if not user_input:
+            continue
+        if user_input.lower() in {"quit", "exit"}:
+            print("Bye.")
+            break
+
+        conversation_history.append({"role": "user", "content": user_input})
+
+        try:
+            result = await agent.ainvoke({"messages": conversation_history})
+            response_message = result["messages"][-1]
+            content = response_message.content
+            response_text = (
+                " ".join(b["text"] for b in content if isinstance(b, dict) and b.get("type") == "text")
+                if isinstance(content, list) else content
+            )
+
+            conversation_history.append(
+                {"role": "assistant", "content": response_text}
+            )
+
+            print(f"\nKortex: {response_text}\n")
+
+        except Exception as e:
+            print(f"\nError: {e}\n", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    asyncio.run(run_agent())

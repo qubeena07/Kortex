@@ -1,0 +1,1 @@
+Kortex is a personal research assistant built with LangGraph and Gemini.
