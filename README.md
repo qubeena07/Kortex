@@ -1,6 +1,6 @@
 # Kortex
 
-A personal research assistant that lets you chat with your own notes and files. Ask questions in plain English — it searches your local database first, then falls back to reading files from your vault.
+A personal research assistant that lets you chat with your own notes and files. Ask questions in plain English, it searches your local database first, then falls back to reading files from your vault.
 
 Built with LangGraph, Gemini 2.5 Flash, and FastMCP. Comes with both a terminal interface and a Streamlit UI.
 
@@ -8,10 +8,10 @@ Built with LangGraph, Gemini 2.5 Flash, and FastMCP. Comes with both a terminal 
 
 Kortex runs a local MCP server (`server.py`) that exposes two tools to the agent:
 
-- **search_notes** — full-text search over a SQLite database of research entries
-- **read_file** — reads `.txt` files from a `vault/` folder
+- **search_notes**:full-text search over a SQLite database of research entries
+- **read_file** : reads `.txt` files from a `vault/` folder
 
-When you ask a question, the agent decides which tool to call (or both), then gives you a grounded answer. The Streamlit UI shows the full thought process — which tools were called, what inputs were passed, and what came back.
+When you ask a question, the agent decides which tool to call (or both), then gives you a grounded answer. The Streamlit UI shows the full thought process, which tools were called, what inputs were passed, and what came back.
 
 ## Setup
 
