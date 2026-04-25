@@ -21,26 +21,20 @@ Be concise. Cite the note ID or filename when referencing retrieved content."""
 
 
 async def run_agent():
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        temperature=0,
-    )
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 
-    client = MultiServerMCPClient(
-        {
-            "kortex": {
-                "command": "uv",
-                "args": ["run", "python", "server.py"],
-                "transport": "stdio",
-            }
+    client = MultiServerMCPClient({
+        "kortex": {
+            "command": "uv",
+            "args": ["run", "python", "server.py"],
+            "transport": "stdio",
         }
-    )
+    })
     tools = await client.get_tools()
     agent = create_react_agent(llm, tools, prompt=SYSTEM_PROMPT)
 
-    print("Kortex agent ready. Type 'quit' or 'exit' to stop.\n")
-
-    conversation_history = []
+    print("Kortex ready. Type 'exit' to quit.\n")
+    history = []
 
     while True:
         try:
@@ -55,23 +49,17 @@ async def run_agent():
             print("Bye.")
             break
 
-        conversation_history.append({"role": "user", "content": user_input})
+        history.append({"role": "user", "content": user_input})
 
         try:
-            result = await agent.ainvoke({"messages": conversation_history})
-            response_message = result["messages"][-1]
-            content = response_message.content
-            response_text = (
+            result = await agent.ainvoke({"messages": history})
+            content = result["messages"][-1].content
+            response = (
                 " ".join(b["text"] for b in content if isinstance(b, dict) and b.get("type") == "text")
                 if isinstance(content, list) else content
             )
-
-            conversation_history.append(
-                {"role": "assistant", "content": response_text}
-            )
-
-            print(f"\nKortex: {response_text}\n")
-
+            history.append({"role": "assistant", "content": response})
+            print(f"\nKortex: {response}\n")
         except Exception as e:
             print(f"\nError: {e}\n", file=sys.stderr)
 
