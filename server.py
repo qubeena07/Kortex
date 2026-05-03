@@ -1,7 +1,10 @@
 import sqlite3
+import logging
 from pathlib import Path
 
 from fastmcp import FastMCP
+
+logging.getLogger("fastmcp").setLevel(logging.WARNING)
 
 mcp = FastMCP("Kortex-Tools")
 

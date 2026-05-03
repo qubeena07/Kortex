@@ -1,0 +1,1 @@
+FastMCP is a Python framework for building MCP servers quickly.

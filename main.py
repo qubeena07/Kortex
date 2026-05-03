@@ -1,9 +1,18 @@
 import asyncio
 import json
+import logging
+import sqlite3
 import threading
+import warnings
+from datetime import date
+from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv()
+
+logging.getLogger("fastmcp").setLevel(logging.WARNING)
+logging.getLogger("mcp").setLevel(logging.WARNING)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="langgraph")
 
 import streamlit as st
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -12,11 +21,14 @@ from langgraph.prebuilt import create_react_agent
 
 from agent import SYSTEM_PROMPT
 
+DB_PATH = Path("kortex.db")
+VAULT_PATH = Path("vault")
+
 st.set_page_config(
     page_title="Kortex",
     page_icon="⬡",
-    layout="centered",
-    initial_sidebar_state="collapsed",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
@@ -37,12 +49,18 @@ st.markdown("""
     background-color: var(--bg0) !important;
 }
 .main .block-container {
-    max-width: 780px;
+    max-width: 860px;
     padding-top: 0;
 }
 
 [data-testid="stHeader"] { background: transparent !important; }
 #MainMenu, footer { visibility: hidden; }
+
+[data-testid="stSidebar"] {
+    background-color: var(--bg1) !important;
+    border-right: 1px solid var(--border);
+}
+[data-testid="stSidebar"] * { color: var(--text) !important; }
 
 .kortex-header {
     text-align: center;
@@ -112,16 +130,60 @@ st.markdown("""
     border-radius: 20px;
     margin-bottom: 0.5rem;
 }
+.note-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+}
+.note-title {
+    color: var(--accent2);
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+.note-date {
+    color: var(--muted);
+    font-size: 0.7rem;
+}
+.note-preview {
+    color: var(--text);
+    margin-top: 4px;
+    opacity: 0.8;
+}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<div class="kortex-header">
-    <h1>⬡ KORTEX</h1>
-    <p>Personal Research Assistant</p>
-</div>
-""", unsafe_allow_html=True)
 
+# ── DB helpers ──────────────────────────────────────────────────────────────
+
+def get_notes():
+    if not DB_PATH.exists():
+        return []
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM notes ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def save_note(title: str, content: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT INTO notes (title, content, created_at) VALUES (?, ?, ?)",
+        (title, content, str(date.today())),
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_vault_file(filename: str, text: str):
+    VAULT_PATH.mkdir(exist_ok=True)
+    (VAULT_PATH / filename).write_text(text, encoding="utf-8")
+
+
+# ── Agent ────────────────────────────────────────────────────────────────────
 
 @st.cache_resource(show_spinner="Starting Kortex tools...")
 def load_agent():
@@ -134,6 +196,7 @@ def load_agent():
                 "command": "uv",
                 "args": ["run", "python", "server.py"],
                 "transport": "stdio",
+                "env": {"FASTMCP_LOG_LEVEL": "WARNING"},
             }
         })
         tools = await client.get_tools()
@@ -204,6 +267,72 @@ def render_steps(steps):
         </div>
         """, unsafe_allow_html=True)
 
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+
+with st.sidebar:
+    st.markdown("### ⬡ Kortex")
+    st.markdown("---")
+
+    # Add note form
+    with st.expander("➕ Add Note", expanded=False):
+        note_title = st.text_input("Title", key="new_note_title", placeholder="Note title")
+        note_content = st.text_area("Content", key="new_note_content", placeholder="Write your research...", height=120)
+        if st.button("Save Note", use_container_width=True):
+            if note_title.strip() and note_content.strip():
+                save_note(note_title.strip(), note_content.strip())
+                st.success("Saved!")
+                st.rerun()
+            else:
+                st.warning("Title and content required.")
+
+    st.markdown("---")
+
+    # Upload file to vault
+    with st.expander("📁 Upload to Vault", expanded=False):
+        uploaded = st.file_uploader("Upload .txt file", type=["txt"], key="vault_upload")
+        if uploaded is not None:
+            text = uploaded.read().decode("utf-8")
+            save_vault_file(uploaded.name, text)
+            st.success(f"Saved to vault: {uploaded.name}")
+
+    st.markdown("---")
+
+    # Notes history
+    st.markdown("**Notes in DB**")
+    notes = get_notes()
+    if notes:
+        for note in notes:
+            preview = note["content"][:80] + "…" if len(note["content"]) > 80 else note["content"]
+            st.markdown(f"""
+            <div class="note-card">
+                <div class="note-title">{note['title']}</div>
+                <div class="note-date">{note['created_at']}</div>
+                <div class="note-preview">{preview}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.markdown('<span style="color:#5a5a80;font-size:0.8rem">No notes yet.</span>', unsafe_allow_html=True)
+
+    # Vault files
+    st.markdown("---")
+    st.markdown("**Vault Files**")
+    vault_files = sorted(VAULT_PATH.glob("*.txt")) if VAULT_PATH.exists() else []
+    if vault_files:
+        for f in vault_files:
+            st.markdown(f'<span style="color:#a78bfa;font-size:0.8rem">📄 {f.name}</span>', unsafe_allow_html=True)
+    else:
+        st.markdown('<span style="color:#5a5a80;font-size:0.8rem">No files in vault.</span>', unsafe_allow_html=True)
+
+
+# ── Main chat ─────────────────────────────────────────────────────────────────
+
+st.markdown("""
+<div class="kortex-header">
+    <h1>⬡ KORTEX</h1>
+    <p>Personal Research Assistant</p>
+</div>
+""", unsafe_allow_html=True)
 
 if "display_msgs" not in st.session_state:
     st.session_state.display_msgs = []

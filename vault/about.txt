@@ -1,1 +1,1 @@
-Kortex is a personal research assistant built with LangGraph and Gemini.
+Kortex vault file with info about MCP servers and FastMCP.

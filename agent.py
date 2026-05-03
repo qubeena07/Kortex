@@ -1,8 +1,15 @@
 import asyncio
 import sys
+import logging
 
 from dotenv import load_dotenv
 load_dotenv()
+
+logging.getLogger("fastmcp").setLevel(logging.WARNING)
+logging.getLogger("mcp").setLevel(logging.WARNING)
+
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="langgraph")
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -13,9 +20,10 @@ SYSTEM_PROMPT = """You are Kortex, a personal research assistant with access to 
 - search_notes: searches a local SQLite database of research entries
 - read_file: reads a .txt file from the local vault folder
 
-When answering questions, ALWAYS try search_notes first. Only use read_file if:
-  - search_notes returns no results, OR
-  - the user explicitly asks to read a specific file
+When answering questions:
+1. ALWAYS call search_notes first.
+2. If search_notes returns "No notes found", you MUST then call read_file with "about.txt" to check the vault before giving up.
+3. Only tell the user you have no information after trying both tools.
 
 Be concise. Cite the note ID or filename when referencing retrieved content."""
 
@@ -28,6 +36,7 @@ async def run_agent():
             "command": "uv",
             "args": ["run", "python", "server.py"],
             "transport": "stdio",
+            "env": {"FASTMCP_LOG_LEVEL": "WARNING"},
         }
     })
     tools = await client.get_tools()
